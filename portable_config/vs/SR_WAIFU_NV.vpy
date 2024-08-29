@@ -1,5 +1,5 @@
 ### https://github.com/hooke007/MPV_lazy/wiki/3_K7sfunc
-### waifu2x upscaling or denoising, extremely high performance requirements, N-card only
+### waifu2x Upscaling or Denoising, Extremely High Performance Requirement, Nvidia GPUs Only
 
 import vapoursynth as vs
 from vapoursynth import core
@@ -21,16 +21,16 @@ St_Eng = False
 Ws_Size = 0
 H_Max = 1440
 Lk_Fmt = False
-## Integer, pre-reduce processing source height
+## Integer, pre-scale processing source height
 ## <True|False> Whether to process sources exceeding HD resolution (720P)
-## <3|5|6> Model used
+## <3|5|6> Model to use
 ## <-1|0|1|2|3> Denoising level, -1 for no denoising
-## GPU number used, 0 is sorted as number one
-## <1|2|3> Number of GPU threads used
-## <True|False> Whether to use static engine (requires pre-processing of sources of different resolutions); dynamic engine adapts to different resolutions (64²→DCI2K)
-## <0~1024> Integer, restrict VRAM (MiB), minimum value for static engine is 128 (dynamic engine automatically doubles), set to a value lower than this to be unlimited
-## Integer, output height limit (fill in your monitor height)
-## <True|False> Whether to lock the pixel format to yuv420p8
+## GPU index, 0 for the first GPU
+## <1|2|3> Number of GPU threads to use
+## <True|False> Whether to use static engine (requires pre-processing for different resolutions); dynamic engine adapts to different resolutions (64²→DCI2K)
+## <0~1024> Integer, memory constraint (MiB), static engine minimum is 128 (dynamic engine automatically doubles), set below this value to be unrestricted
+## Integer, output height limit (fill in your display height)
+## <True|False> Whether to lock pixel format to yuv420p8
 
 ret = k7f.FMT_CTRL(clip, h_max=1200, h_ret=True)
 clip = k7f.FMT_CTRL(clip, h_max=H_Pre, fmt_pix=1 if Lk_Fmt else 0)

@@ -1,5 +1,5 @@
 ### https://github.com/hooke007/MPV_lazy/wiki/3_K7sfunc
-### Convert pseudo 25 or 30 fps source to 24 fps
+### Convert Pseudo 25 or 30 fps Source to 24 fps
 
 import vapoursynth as vs
 from vapoursynth import core
@@ -12,7 +12,7 @@ clip = video_in
 ############
 
 Ivtc_M = 1
-## <1|2> ivtc mode
+## <1|2> ivtc Mode
 
 clip = k7f.IVTC_STD(clip, fps_in=container_fps, ivtc_m=Ivtc_M)
 

@@ -7,11 +7,11 @@ import fractions
 import math
 import typing
 import vapoursynth as vs
-__version__ = "0.5.0"
+__version__ = "0.6.1"
 
 __all__ = [
     "FMT_CHANGE", "FMT_CTRL", "FPS_CHANGE", "FPS_CTRL",
-    "ACNET_STD", "CUGAN_NV", "EDI_US_STD", "ESRGAN_DML", "ESRGAN_NV", "NGU_HQ", "WAIFU_DML", "WAIFU_NV",
+    "ACNET_STD", "ARTCNN_NV", "CUGAN_NV", "EDI_US_STD", "ESRGAN_DML", "ESRGAN_NV", "NGU_HQ", "WAIFU_DML", "WAIFU_NV",
     "MVT_LQ", "MVT_STD", "MVT_POT", "MVT_MQ", "RIFE_STD", "RIFE_NV", "RIFE_NV_MVT", "SVP_LQ", "SVP_STD", "SVP_HQ", "SVP_PRO",
     "BILA_NV", "BM3D_NV", "CCD_STD", "DFTT_STD", "DFTT_NV", "DPIR_NR_NV", "FFT3D_STD", "NLM_STD", "NLM_NV",
     "COLOR_P3W_FIX", "CSC_RB", "DEBAND_STD", "DEINT_LQ", "DEINT_STD", "DEINT_EX", "DPIR_DBLK_NV", "EDI_AA_STD", "EDI_AA_NV", "IVTC_STD", "STAB_STD", "STAB_HQ", "UAI_DML", "UAI_NV_TRT", "UVR_MAD",
@@ -668,6 +668,89 @@ def ACNET_STD(
     cut1 = core.anime4kcpp.Anime4KCPP(src=cut0, zoomFactor=2, ACNet=1, GPUMode=1, GPGPUModel="opencl" if gpu_m ==
                                       1 else "cuda", HDN=nr, HDNLevel=nr_lv, platformID=gpu, deviceID=gpu)
     output = core.resize.Bilinear(clip=cut1, format=fmt_in)
+
+    return output
+
+##################################################
+# ArtCNN放大
+##################################################
+
+
+def ARTCNN_NV(
+        input: vs.VideoNode,
+        lt_hd: bool = False,
+        model: typing.Literal[6, 7, 8] = 8,
+        gpu: typing.Literal[0, 1, 2] = 0,
+        gpu_t: int = 2,
+        st_eng: bool = False,
+        ws_size: int = 0,
+        vs_t: int = vs_thd_dft,
+) -> vs.VideoNode:
+
+    func_name = "ARTCNN_NV"
+    if not isinstance(input, vs.VideoNode):
+        raise vs.Error(f"模块 {func_name} 的子参数 input 的值无效")
+    if not isinstance(lt_hd, bool):
+        raise vs.Error(f"模块 {func_name} 的子参数 lt_hd 的值无效")
+    if model not in [6, 7, 8]:
+        raise vs.Error(f"模块 {func_name} 的子参数 model 的值无效")
+    if gpu not in [0, 1, 2]:
+        raise vs.Error(f"模块 {func_name} 的子参数 gpu 的值无效")
+    if not isinstance(gpu_t, int) or gpu_t <= 0:
+        raise vs.Error(f"模块 {func_name} 的子参数 gpu_t 的值无效")
+    if not isinstance(st_eng, bool):
+        raise vs.Error(f"模块 {func_name} 的子参数 st_eng 的值无效")
+    if not isinstance(ws_size, int) or ws_size < 0:
+        raise vs.Error(f"模块 {func_name} 的子参数 ws_size 的值无效")
+    if not isinstance(vs_t, int) or vs_t > vs_thd_init:
+        raise vs.Error(f"模块 {func_name} 的子参数 vs_t 的值无效")
+
+    if not hasattr(core, "trt"):
+        raise ModuleNotFoundError(f"模块 {func_name} 依赖错误：缺失插件，检查项目 trt")
+
+    plg_dir = os.path.dirname(core.trt.Version()["path"]).decode()
+    mdl_fname = ["ArtCNN_R16F96", "ArtCNN_R8F64",
+                 "ArtCNN_R8F64_DS"][[6, 7, 8].index(model)]
+    mdl_pth = plg_dir + "/models/ArtCNN/" + mdl_fname + ".onnx"
+    if not os.path.exists(mdl_pth):
+        raise vs.Error(f"模块 {func_name} 所请求的模型缺失")
+
+    global vsmlrt
+    if vsmlrt is None:
+        try:
+            import vsmlrt
+        except ImportError:
+            raise ImportError(f"模块 {func_name} 依赖错误：缺失脚本 vsmlrt")
+    if LooseVersion(vsmlrt.__version__) < LooseVersion("3.21.13"):
+        raise ImportError(f"模块 {func_name} 依赖错误：缺失脚本 vsmlrt 的版本号过低，至少 3.21.13")
+
+    core.num_threads = vs_t
+    w_in, h_in = input.width, input.height
+    size_in = w_in * h_in
+    colorlv = getattr(input.get_frame(0).props, "_ColorRange", 0)
+    fmt_in = input.format.id
+
+    if (not lt_hd and (size_in > 1280 * 720)) or (size_in > 2048 * 1080):
+        raise Exception("源分辨率超过限制的范围，已临时中止。")
+    if not st_eng and (((w_in > 2048) or (h_in > 1080)) or ((w_in < 64) or (h_in < 64))):
+        raise Exception("源分辨率不属于动态引擎支持的范围，已临时中止。")
+
+    cut0 = core.resize.Bilinear(clip=input, format=vs.YUV444PH)
+
+    cut0_y = core.std.ShufflePlanes(clips=cut0, planes=0, colorfamily=vs.GRAY)
+    cut1_y = vsmlrt.ArtCNN(clip=cut0_y, model=model, backend=vsmlrt.BackendV2.TRT(
+        num_streams=gpu_t, force_fp16=True, output_format=1,
+        workspace=None if ws_size < 128 else (
+            ws_size if st_eng else ws_size * 2),
+        use_cuda_graph=True, use_cublas=False, use_cudnn=False,
+        static_shape=st_eng, min_shapes=[0, 0] if st_eng else [64, 64],
+        opt_shapes=None if st_eng else ([1920, 1080] if lt_hd else [1280, 720]), max_shapes=None if st_eng else ([2048, 1080] if lt_hd else [1280, 720]),
+        device_id=gpu, short_path=True))
+    cut1_uv = core.resize.Bilinear(
+        clip=cut0, width=cut1_y.width, height=cut1_y.height)
+    cut2 = core.std.ShufflePlanes(clips=[cut1_y, cut1_uv], planes=[
+                                  0, 1, 2], colorfamily=vs.YUV)
+    output = core.resize.Bilinear(clip=cut2, format=fmt_in)
 
     return output
 
@@ -1406,7 +1489,7 @@ def MVT_MQ(
 
 def RIFE_STD(
         input: vs.VideoNode,
-        model: typing.Literal[23, 47, 49] = 23,
+        model: typing.Literal[23, 64, 65] = 23,
         t_tta: bool = False,
         fps_num: int = 2,
         fps_den: int = 1,
@@ -1421,7 +1504,7 @@ def RIFE_STD(
     func_name = "RIFE_STD"
     if not isinstance(input, vs.VideoNode):
         raise vs.Error(f"模块 {func_name} 的子参数 input 的值无效")
-    if model not in [23, 47, 49]:
+    if model not in [23, 64, 65]:
         raise vs.Error(f"模块 {func_name} 的子参数 model 的值无效")
     if not isinstance(t_tta, bool):
         raise vs.Error(f"模块 {func_name} 的子参数 t_tta 的值无效")
@@ -1467,6 +1550,8 @@ def RIFE_STD(
         vec = core.mv.Analyse(super=sup, isb=True)
         cut0 = core.mv.SCDetection(
             clip=input, vectors=vec, thscd1=240, thscd2=130)
+    if model >= 63:
+        t_tta = False
 
     cut1 = core.resize.Bilinear(clip=cut0, format=vs.RGBS, matrix_in_s="709")
     cut2 = core.rife.RIFE(clip=cut1, model=(model+1) if t_tta else model, factor_num=fps_num, factor_den=fps_den,
@@ -1484,7 +1569,7 @@ def RIFE_STD(
 def RIFE_NV(
         input: vs.VideoNode,
         lt_d2k: bool = False,
-        model: typing.Literal[46, 415, 4151] = 46,
+        model: typing.Literal[46, 422, 4221] = 46,
         ext_proc: bool = True,
         t_tta: bool = False,
         fps_in: float = 23.976,
@@ -1503,7 +1588,7 @@ def RIFE_NV(
         raise vs.Error(f"模块 {func_name} 的子参数 input 的值无效")
     if not isinstance(lt_d2k, bool):
         raise vs.Error(f"模块 {func_name} 的子参数 lt_d2k 的值无效")
-    if model not in [46, 415, 4151]:
+    if model not in [46, 422, 4221]:
         raise vs.Error(f"模块 {func_name} 的子参数 model 的值无效")
     if not isinstance(ext_proc, bool):
         raise vs.Error(f"模块 {func_name} 的子参数 ext_proc 的值无效")
@@ -1542,12 +1627,14 @@ def RIFE_NV(
 
     plg_dir = os.path.dirname(core.trt.Version()["path"]).decode()
     mdl_pname = "rife/" if ext_proc else "rife_v2/"
+    if model in [422, 4221]:  # https://github.com/AmusementClub/vs-mlrt/blob/abc5b1c777a5dde6bad51a099f28eba99375ef4e/scripts/vsmlrt.py#L989
+        t_tta = False
     if t_tta:
-        mdl_fname = ["rife_v4.6_ensemble", "rife_v4.15_ensemble",
-                     "rife_v4.15_lite_ensemble"][[46, 415, 4151].index(model)]
+        mdl_fname = ["rife_v4.6_ensemble", "rife_v4.22_ensemble",
+                     "rife_v4.22_lite_ensemble"][[46, 422, 4221].index(model)]
     else:
-        mdl_fname = ["rife_v4.6", "rife_v4.15",
-                     "rife_v4.15_lite"][[46, 415, 4151].index(model)]
+        mdl_fname = ["rife_v4.6", "rife_v4.22",
+                     "rife_v4.22_lite"][[46, 422, 4221].index(model)]
     mdl_pth = plg_dir + "/models/" + mdl_pname + mdl_fname + ".onnx"
     if not os.path.exists(mdl_pth):
         raise vs.Error(f"模块 {func_name} 所请求的模型缺失")
@@ -1558,8 +1645,8 @@ def RIFE_NV(
             import vsmlrt
         except ImportError:
             raise ImportError(f"模块 {func_name} 依赖错误：缺失脚本 vsmlrt")
-    if LooseVersion(vsmlrt.__version__) < LooseVersion("3.20.4"):
-        raise ImportError(f"模块 {func_name} 依赖错误：缺失脚本 vsmlrt 的版本号过低，至少 3.20.4")
+    if LooseVersion(vsmlrt.__version__) < LooseVersion("3.21.16"):
+        raise ImportError(f"模块 {func_name} 依赖错误：缺失脚本 vsmlrt 的版本号过低，至少 3.21.16")
 
     core.num_threads = vs_t
     w_in, h_in = input.width, input.height
@@ -1578,9 +1665,9 @@ def RIFE_NV(
     scale_model = 1
     if lt_d2k and st_eng and (size_in > 2048 * 1088):
         scale_model = 0.5
-        if not ext_proc:  # https://github.com/AmusementClub/vs-mlrt/blob/27d417572ba4359c4eb0f45da691f75275842d98/scripts/vsmlrt.py#L945
+        if not ext_proc:  # https://github.com/AmusementClub/vs-mlrt/blob/abc5b1c777a5dde6bad51a099f28eba99375ef4e/scripts/vsmlrt.py#L1002
             scale_model = 1
-    if model >= 47:  # https://github.com/AmusementClub/vs-mlrt/blob/27d417572ba4359c4eb0f45da691f75275842d98/scripts/vsmlrt.py#L937
+    if model >= 47:  # https://github.com/AmusementClub/vs-mlrt/blob/abc5b1c777a5dde6bad51a099f28eba99375ef4e/scripts/vsmlrt.py#L994
         scale_model = 1
 
     tile_size = 32 / scale_model
@@ -1635,7 +1722,7 @@ def RIFE_NV(
 def RIFE_NV_MVT(
         input: vs.VideoNode,
         lt_d2k: bool = False,
-        model: typing.Literal[46, 415, 4151] = 46,
+        model: typing.Literal[46, 422, 4221] = 46,
         ext_proc: bool = True,
         t_tta: bool = False,
         fps_in: float = 23.976,
@@ -1655,7 +1742,7 @@ def RIFE_NV_MVT(
         raise vs.Error(f"模块 {func_name} 的子参数 input 的值无效")
     if not isinstance(lt_d2k, bool):
         raise vs.Error(f"模块 {func_name} 的子参数 lt_d2k 的值无效")
-    if model not in [46, 415, 4151]:
+    if model not in [46, 422, 4221]:
         raise vs.Error(f"模块 {func_name} 的子参数 model 的值无效")
     if not isinstance(ext_proc, bool):
         raise vs.Error(f"模块 {func_name} 的子参数 ext_proc 的值无效")
@@ -1694,12 +1781,14 @@ def RIFE_NV_MVT(
 
     plg_dir = os.path.dirname(core.trt.Version()["path"]).decode()
     mdl_pname = "rife/" if ext_proc else "rife_v2/"
+    if model in [422, 4221]:  # https://github.com/AmusementClub/vs-mlrt/blob/abc5b1c777a5dde6bad51a099f28eba99375ef4e/scripts/vsmlrt.py#L989
+        t_tta = False
     if t_tta:
-        mdl_fname = ["rife_v4.6_ensemble", "rife_v4.15_ensemble",
-                     "rife_v4.15_lite_ensemble"][[46, 415, 4151].index(model)]
+        mdl_fname = ["rife_v4.6_ensemble", "rife_v4.22_ensemble",
+                     "rife_v4.22_lite_ensemble"][[46, 422, 4221].index(model)]
     else:
-        mdl_fname = ["rife_v4.6", "rife_v4.15",
-                     "rife_v4.15_lite"][[46, 415, 4151].index(model)]
+        mdl_fname = ["rife_v4.6", "rife_v4.22",
+                     "rife_v4.22_lite"][[46, 422, 4221].index(model)]
     mdl_pth = plg_dir + "/models/" + mdl_pname + mdl_fname + ".onnx"
     if not os.path.exists(mdl_pth):
         raise vs.Error(f"模块 {func_name} 所请求的模型缺失")
@@ -1710,8 +1799,8 @@ def RIFE_NV_MVT(
             import vsmlrt
         except ImportError:
             raise ImportError(f"模块 {func_name} 依赖错误：缺失脚本 vsmlrt")
-    if LooseVersion(vsmlrt.__version__) < LooseVersion("3.20.4"):
-        raise ImportError(f"模块 {func_name} 依赖错误：缺失脚本 vsmlrt 的版本号过低，至少 3.20.4")
+    if LooseVersion(vsmlrt.__version__) < LooseVersion("3.21.16"):
+        raise ImportError(f"模块 {func_name} 依赖错误：缺失脚本 vsmlrt 的版本号过低，至少 3.21.16")
 
     core.num_threads = vs_t
     w_in, h_in = input.width, input.height
@@ -1730,9 +1819,9 @@ def RIFE_NV_MVT(
     scale_model = 1
     if lt_d2k and st_eng and (size_in > 2048 * 1088):
         scale_model = 0.5
-        if not ext_proc:  # https://github.com/AmusementClub/vs-mlrt/blob/27d417572ba4359c4eb0f45da691f75275842d98/scripts/vsmlrt.py#L945
+        if not ext_proc:  # https://github.com/AmusementClub/vs-mlrt/blob/abc5b1c777a5dde6bad51a099f28eba99375ef4e/scripts/vsmlrt.py#L1002
             scale_model = 1
-    if model >= 47:  # https://github.com/AmusementClub/vs-mlrt/blob/27d417572ba4359c4eb0f45da691f75275842d98/scripts/vsmlrt.py#L937
+    if model >= 47:  # https://github.com/AmusementClub/vs-mlrt/blob/abc5b1c777a5dde6bad51a099f28eba99375ef4e/scripts/vsmlrt.py#L994
         scale_model = 1
 
     tile_size = 32 / scale_model
@@ -1817,7 +1906,7 @@ def RIFE_NV_MVT(
                             lambda_=0, lsad=10000, overlapv=16, badrange=0, search_coarse=4)
 
     outputr = core.mv.BlockFPS(clip=cut1, super=cut_s, mvbw=cut_b, mvfw=cut_f,
-                               num=fps_out * 1000, den=vden, mode=2, thscd1=970, thscd2=255, blend=False)
+                              num=fps_out * 1000, den=vden, mode=2, thscd1=970, thscd2=255, blend=False)
     if w_tmp + h_tmp > 0:
         outputr = core.std.Crop(clip=outputr, right=w_tmp, bottom=h_tmp)
 

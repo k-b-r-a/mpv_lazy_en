@@ -1,5 +1,5 @@
 ### https://github.com/hooke007/MPV_lazy/wiki/3_K7sfunc
-### waifu2x Upscaling or Denoising, Extremely High Performance Requirement, DX12 GPUs Only
+### ArtCNN Upscaling, High Performance Requirement, NVIDIA GPU Only
 
 import vapoursynth as vs
 from vapoursynth import core
@@ -12,25 +12,27 @@ clip = video_in
 ############
 
 H_Pre = 720
-Lt_Hd = False
-Model = 3
-Nr_Lv = 2
+Lt_Hd = True
+Model = 8
 Gpu = 0
 Gpu_T = 2
+St_Eng = False
+Ws_Size = 0
 H_Max = 1440
 Lk_Fmt = False
 ## Integer, pre-scale processing source height
 ## <True|False> Whether to process sources exceeding HD resolution (720P)
-## <3|5|6> Model to use
-## <-1|0|1|2|3> Denoising level, -1 for no denoising
+## <6|7|8> Model to use
 ## GPU index, 0 for the first GPU
 ## <1|2|3> Number of GPU threads to use
+## <True|False> Whether to use static engine (requires pre-processing for different resolutions); dynamic engine adapts to different resolutions (64²→DCI2K)
+## <0~1024> Memory constraint (MiB); minimum value for static engine is 128 (dynamic engine automatically doubles); setting below this value means no limit
 ## Integer, output height limit (fill in your display height)
 ## <True|False> Whether to lock pixel format to yuv420p8
 
 ret = k7f.FMT_CTRL(clip, h_max=1200, h_ret=True)
 clip = k7f.FMT_CTRL(clip, h_max=H_Pre, fmt_pix=1 if Lk_Fmt else 0)
-clip = k7f.WAIFU_DML(clip, lt_hd=Lt_Hd, model=Model, nr_lv=Nr_Lv, gpu=Gpu, gpu_t=Gpu_T)
+clip = k7f.ARTCNN_NV(clip, lt_hd=Lt_Hd, model=Model, gpu=Gpu, gpu_t=Gpu_T, st_eng=St_Eng, ws_size=Ws_Size)
 clip = k7f.FMT_CTRL(clip, h_max=H_Max, fmt_pix=1 if Lk_Fmt else 0)
 
 clip.set_output()

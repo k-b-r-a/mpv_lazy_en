@@ -35,7 +35,7 @@ Fps_Out = 149
 
 ## Integer, pre-downscale processing source height (fill in your monitor height)
 ## <True|False> Whether to interpolate sources above DCI2K resolution
-## <46|415|4151> Model used
+## <46|422|4221> Model used
 ## <True|False> Whether to use external padding and cropping processing
 ## <True|False> Whether to use the ensemble version of the model
 ## Integer, the value of Fps_Num/Fps_Den is the frame rate multiplier

@@ -1,5 +1,5 @@
 ### https://github.com/hooke007/MPV_lazy/wiki/3_K7sfunc
-### mvtools frame doubling, moderate overhead
+### mvtools Frame Doubling, General Usage
 
 import vapoursynth as vs
 from vapoursynth import core
@@ -15,10 +15,10 @@ H_Pre = 1440
 Recal = True
 Block = True
 Lk_Fmt = False
-## Integer, pre-downscale processing source height (fill in your monitor height)
-## <True|False> Whether to use second analysis
-## <True|False> Whether to use Block mode
-## <True|False> Whether to lock the pixel format to yuv420p8
+## Integer, pre-downscale source height (set to your monitor height)
+## <True|False> Use Recalculation (second analysis)
+## <True|False> Use Block Mode
+## <True|False> Lock pixel format to yuv420p8
 
 ret = k7f.FPS_CTRL(clip, fps_in=container_fps, fps_ret=True)
 clip = k7f.FMT_CTRL(clip, h_max=H_Pre, fmt_pix=1 if Lk_Fmt else 0)
