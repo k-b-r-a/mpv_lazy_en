@@ -1,5 +1,5 @@
 ### https://github.com/hooke007/MPV_lazy/wiki/3_K7sfunc
-### Reduce Color Noise, Moderate Consumption
+### Reduce Chroma Noise — Moderate Processing Overhead
 
 import vapoursynth as vs
 from vapoursynth import core
@@ -11,8 +11,7 @@ clip = video_in
 # User Options #
 ############
 
-Nr_Lv = 30.0
-## Float, color noise threshold; higher values increase denoising effect (more smearing)
+Nr_Lv = 30.0       # Float — chroma noise threshold; higher = stronger denoising (more blurring)
 
 clip = k7f.CCD_STD(clip, nr_lv=Nr_Lv)
 
